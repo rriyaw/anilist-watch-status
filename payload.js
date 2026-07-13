@@ -85,6 +85,59 @@ $ui.register((ctx) => {
 
       const anilistLabel = getStatusLabel(entry);
       const anilistTooltip = getTooltipText(entry);
+      // Multi-user compare: read additional usernames from storage
+      function normalizeUsers(val) {
+        if (!val) return [];
+        if (Array.isArray(val)) return val.map(String).filter(Boolean);
+        if (typeof val === "string") {
+          return val
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
+        return [];
+      }
+
+      async function fetchAniListEntryForUser(userName, mediaId) {
+        const QUERY = `query ($userName: String!, $mediaId: Int!) { MediaList(userName: $userName, mediaId: $mediaId) { status progress score repeat media { episodes title { romaji english native } id idMal } user { name } } }`;
+        try {
+          const res = await ctx.fetch("https://graphql.anilist.co", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: QUERY, variables: { userName, mediaId } }),
+          });
+          const json = await res.json();
+          if (json && json.data && json.data.MediaList) return json.data.MediaList;
+          return null;
+        } catch (err) {
+          console.warn("anilist-watch-status: fetchAniListEntryForUser error", err);
+          return null;
+        }
+      }
+
+      const stored = $storage.get("anilistCompare.users");
+      const otherUsers = normalizeUsers(stored).filter((u) => u && u !== "");
+      let compareParts = [];
+      if (otherUsers.length > 0) {
+        // fetch all users concurrently (limit to reasonable number)
+        const limited = otherUsers.slice(0, 8);
+        const results = await Promise.all(
+          limited.map((u) => fetchAniListEntryForUser(u, mediaId).then((r) => ({ user: u, entry: r })))
+        );
+
+        for (const r of results) {
+          if (!r.entry) {
+            compareParts.push(`${r.user}: Not Listed`);
+            continue;
+          }
+          const s = r.entry.status || "UNKNOWN";
+          const prog = r.entry.progress || 0;
+          const eps = r.entry.media?.episodes || null;
+          const title = r.entry.user?.name || r.user;
+          const part = eps ? `${title}: ${s} (${prog}/${eps})` : `${title}: ${s} (${prog})`;
+          compareParts.push(part);
+        }
+      }
       let malInfo = null;
 
       try {
@@ -102,9 +155,10 @@ $ui.register((ctx) => {
       }
 
       const label = malInfo ? `${anilistLabel} / MAL` : anilistLabel;
+      const compareSuffix = compareParts.length ? ` — ${compareParts.join(" • ")}` : "";
       const tooltip = malInfo
-        ? `${anilistTooltip} — MAL: ${malInfo}`
-        : anilistTooltip;
+        ? `${anilistTooltip} — MAL: ${malInfo}${compareSuffix}`
+        : `${anilistTooltip}${compareSuffix}`;
 
       console.log("anilist-watch-status:final label", label);
       console.log("anilist-watch-status:final tooltip", tooltip);

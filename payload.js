@@ -40,6 +40,51 @@ function getStatusLabel(status) {
     return STATUS_LABELS[status] || status || "Unknown";
 
 }
+function getStatusIcon(status) {
+
+    switch (status) {
+
+        case "CURRENT": return "▶";
+        case "COMPLETED": return "✓";
+        case "PLANNING": return "📋";
+        case "PAUSED": return "⏸";
+        case "DROPPED": return "✕";
+        case "REPEATING": return "↻";
+        default: return "○";
+
+    }
+
+}
+
+function buildButtonLabel(myEntry, compareData, mediaId) {
+
+    const icons = [];
+
+    for (let i = 0; i < USERS.length; i++) {
+
+        const entry = findEntry(
+            compareData[`u${i}`],
+            mediaId
+        );
+
+        const initial = USERS[i][0].toUpperCase();
+
+        if (!entry) {
+
+            icons.push(`${initial}○`);
+            continue;
+
+        }
+
+        icons.push(
+            `${initial}${getStatusIcon(entry.status)}`
+        );
+
+    }
+
+    return `${getStatusIcon(myEntry.listData.status)} ${icons.join(" ")}`;
+
+}
 
 function getTooltipStatus(entry) {
 
@@ -375,9 +420,10 @@ Compare
 ${comparison}`;
 
         action.setLabel(
-            getStatusLabel(
-                myEntry.listData.status
-            )
+            buildButtonLabel(
+                myEntry,
+                compareData,
+                mediaId)
         );
 
         action.setTooltipText(

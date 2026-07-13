@@ -141,30 +141,17 @@ ${body.join("\n")}
 
 }
 async function queryAniList(mediaId) {
+    const token = await $database.getAniListToken();
 
     const payload = buildGraphQL(USERS);
 
     payload.variables.mediaId = mediaId;
 
-    const response = await ctx.fetch(
-        "https://graphql.anilist.co",
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            },
-            body: JSON.stringify(payload)
-        }
-    );
+    const result = await $anilist.customQuery(
+    payload,
+    token );
 
-    const json = await response.json();
-
-    if (json.errors) {
-        throw new Error(json.errors[0]?.message || "AniList GraphQL Error");
-    }
-
-    return json.data;
+    return result.data;
 }
 
 function formatComparison(data) {

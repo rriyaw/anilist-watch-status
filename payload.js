@@ -276,3 +276,270 @@ $ui.register((ctx) => {
   loadUsers();
   ctx.screen.loadCurrent();
 });
+async function queryAniList(mediaId) {
+
+    const payload = buildGraphQL(USERS);
+
+    payload.variables.mediaId = mediaId;
+
+    const response = await ctx.fetch(
+        "https://graphql.anilist.co",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            },
+            body: JSON.stringify(payload)
+        }
+    );
+
+    const json = await response.json();
+
+    if (json.errors) {
+        throw new Error(json.errors[0]?.message || "AniList GraphQL Error");
+    }
+
+    return json.data;
+}
+
+function formatComparison(data) {
+
+    const rows = [];
+
+    USERS.forEach((user, index) => {
+
+        const entry = data[`u${index}`];
+
+        if (!entry) {
+            rows.push(`${user.padEnd(12)} Not Listed`);
+            return;
+        }
+
+        const status = statusName(entry.status);
+
+        const icon = statusEmoji(entry.status);
+
+        const progress = entry.progress || 0;
+
+        const total = entry.media?.episodes;
+
+        const progressText =
+            total && total > 0
+                ? `${progress}/${total}`
+                : `${progress}`;
+
+        rows.push(
+            `${icon} ${user.padEnd(12)} ${status.padEnd(12)} ${progressText}`
+        );
+
+    });
+
+    return rows.join("\n");
+
+}
+
+async function getCurrentUserEntry(mediaId){
+
+    const entry = await ctx.anime.getAnimeEntry(mediaId);
+
+    if(!entry)
+        return null;
+
+    if(!entry.listData)
+        return null;
+
+    return {
+
+        status:
+            entry.listData.status,
+
+        progress:
+            entry.listData.progress || 0,
+
+        episodes:
+            entry.media?.episodes ||
+
+            entry.media?.episodeCount ||
+
+            null,
+
+        malId:
+            entry.media?.idMal ||
+
+            mediaId
+
+    };
+
+}
+
+async function getMalTitle(malId){
+
+    try{
+
+        const metadata =
+            await ctx.anime.getAnimeMetadata(
+                "mal",
+                malId
+            );
+
+        if(metadata?.titles){
+
+            return Object.values(
+                metadata.titles
+            )[0];
+
+        }
+
+    }catch(e){
+
+        console.warn(e);
+
+    }
+
+    return null;
+
+}
+async function updateStatus(event){
+
+    try{
+
+        const current =
+            event ||
+            ctx.screen.state().get();
+
+        const pathname =
+            current?.pathname || "";
+
+        if(
+            !pathname.startsWith("/entry") &&
+            pathname !== "/offline/entry/anime"
+        ){
+
+            action.setLabel("AniList");
+
+            action.setTooltipText(
+                "Not on an anime page"
+            );
+
+            return;
+
+        }
+
+        const mediaId =
+            getMediaId(current);
+
+        if(!mediaId){
+
+            action.setLabel("AniList");
+
+            action.setTooltipText(
+                "No anime selected"
+            );
+
+            return;
+
+        }
+
+        const me =
+            await getCurrentUserEntry(
+                mediaId
+            );
+
+        if(!me){
+
+            action.setLabel(
+                "Not Tracked"
+            );
+
+            action.setTooltipText(
+                "Anime isn't in your AniList."
+            );
+
+            return;
+
+        }
+
+        const compare =
+            await queryAniList(
+                mediaId
+            );
+
+        const comparison =
+            formatComparison(
+                compare
+            );
+
+        const malTitle =
+            await getMalTitle(
+                me.malId
+            );
+
+        const progress =
+            me.episodes
+            ? `${me.progress}/${me.episodes}`
+            : `${me.progress}`;
+
+        let tooltip =
+`${statusName(me.status)}
+Progress: ${progress}`;
+
+        if(malTitle){
+
+            tooltip +=
+`\nMAL: ${malTitle}`;
+
+        }
+
+        tooltip +=
+`\n\nCompare
+────────────────
+${comparison}`;
+
+        action.setLabel(
+            statusName(me.status)
+        );
+
+        action.setTooltipText(
+            tooltip
+        );
+
+        action.setStyle({
+
+            background:"#7c3aed",
+
+            color:"#ffffff"
+
+        });
+
+    }
+    catch(err){
+
+        console.error(err);
+
+        action.setLabel(
+            "Error"
+        );
+
+        action.setTooltipText(
+            err.message ||
+            "Unknown Error"
+        );
+
+        action.setStyle({
+
+            background:"#dc2626",
+
+            color:"#ffffff"
+
+        });
+
+    }
+
+}
+
+ctx.screen.onNavigate(
+    updateStatus
+);
+
+ctx.screen.loadCurrent();

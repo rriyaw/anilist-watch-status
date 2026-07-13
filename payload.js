@@ -1,7 +1,6 @@
 $ui.register((ctx) => {
 
 const USERS = [
-    "rriyawai",
     "Dharion",
     "PrincessAris"
 ];
@@ -414,9 +413,7 @@ Progress : ${progress}`;
         }
 
         tooltip +=
-`\n\n━━━━━━━━━━━━━━━━━━
-Compare
-━━━━━━━━━━━━━━━━━━
+`\n\n||
 ${comparison}`;
 
         action.setLabel(

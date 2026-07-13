@@ -5,7 +5,7 @@
   "manifestURI": "https://raw.githubusercontent.com/rriyaw/anilist-watch-status/refs/heads/main/manifest.json",
   "language": "javascript",
   "type": "plugin",
-  "description": "Shows AniList watch status on the anime page.",
+  "description": "Shows AniList watch status on the anime page and compare it to another user.",
   "author": "rriyaw",
   "lang": "en",
   "payloadURI": "https://raw.githubusercontent.com/rriyaw/anilist-watch-status/refs/heads/main/payload.js",

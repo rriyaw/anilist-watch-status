@@ -1,8 +1,8 @@
 AniList Compare Status
 
-A Seanime plugin that lets you compare your current anime with multiple AniList users directly from the anime page.
+A Seanime plugin that lets you compare your current anime with multiple AniList users directly from the anime page, 
 
-The plugin displays each configured user's watch status for the currently selected anime, making it easy to see who is watching, has completed, or plans to watch the same series.
+The plugin displays each configured user's watch status for the currently selected anime, making it easy to see who is watching, has completed, or plans to watch the same series. It's especially useful for planning watch parties with friends or checking if everyone is at the same point in a series before watching together.
 
 ## Features
 

@@ -39,19 +39,158 @@ $ui.register((ctx) => {
   action.mount();
 
   action.onClick(() => {
-    console.log("AniList status button clicked");
     action.setTooltipText("Refreshing...");
     ctx.screen.loadCurrent();
   });
 
+  const STORAGE_KEY = "anilistCompare.users";
+  const MAX_USERS = 8;
+
+  const compareState = ctx.state({
+    users: [],
+    input: "",
+    lastSaved: null,
+    status: "idle",
+    error: null,
+  });
+
+  const webview = ctx.newWebview({
+    slot: "after-media-entry-details",
+    autoHeight: true,
+    fullWidth: true,
+    className: "anilist-compare-webview",
+  });
+
+  webview.channel.sync("compareState", compareState);
+
+  function normalizeUsers(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map(String).map((v) => v.trim()).filter(Boolean);
+    if (typeof value === "string") {
+      return value
+        .split(/[,\n]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+    return [];
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function renderWebviewContent(state) {
+    const renderUsers = () => {
+      if (!state.users || state.users.length === 0) {
+        return "<div class=\"empty\">No AniList usernames saved yet.</div>";
+      }
+      return state.users
+        .map(
+          (user, index) =>
+            `<div class=\"user-row\"><span>${escapeHtml(user)}</span><button data-remove=\"${index}\">Remove</button></div>`
+        )
+        .join("");
+    };
+
+    const statusLine = state.status === "error" ? `<div class=\"error\">${escapeHtml(state.error)}</div>` : "";
+    const savedLine = state.lastSaved ? `<div class=\"saved\">Last saved: ${escapeHtml(new Date(state.lastSaved).toLocaleString())}</div>` : "";
+
+    return (
+      "<!DOCTYPE html>" +
+      "<html><head><meta charset=\"utf-8\"><style>" +
+      "body{font-family:system-ui,Arial,sans-serif;margin:0;padding:12px;color:#111;background:#f7f7fb;}" +
+      ".header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;}" +
+      ".header h2{margin:0;font-size:1rem;}" +
+      ".input-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}" +
+      ".input-row input{flex:1 1 240px;padding:8px;border:1px solid #d1d5db;border-radius:6px;background:#fff;}" +
+      ".input-row button{padding:8px 12px;border:none;border-radius:6px;background:#7c3aed;color:#fff;cursor:pointer;}" +
+      ".user-list{display:grid;gap:6px;margin-bottom:10px;}" +
+      ".user-row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;}" +
+      ".user-row button{border:none;background:#ef4444;color:#fff;padding:4px 9px;border-radius:6px;cursor:pointer;}" +
+      ".info{font-size:0.85rem;color:#374151;}" +
+      ".saved{margin-top:4px;color:#047857;}" +
+      ".error{margin-top:4px;color:#b91c1c;}" +
+      "</style></head><body>" +
+      `<div class=\"header\"><h2>AniList Compare</h2><div class=\"info\">Save up to ${MAX_USERS} users</div></div>` +
+      `<div class=\"input-row\"><input id=\"usernameInput\" placeholder=\"Add username or comma-separated list\" value=\"${escapeHtml(state.input || "")}\" /><button id=\"addBtn\">Add</button></div>` +
+      `<div class=\"user-list\">${renderUsers()}</div>${savedLine}${statusLine}` +
+      "<script>const channel=window.webview.channel;const input=document.getElementById('usernameInput');const addBtn=document.getElementById('addBtn');addBtn.addEventListener('click',()=>{channel.send('addUsers',input.value)});input.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();channel.send('addUsers',input.value);}});document.body.addEventListener('click',(event)=>{const remove=event.target.getAttribute('data-remove');if(remove!==null){channel.send('removeUser',Number(remove));}});</script>" +
+      "</body></html>"
+    );
+  }
+
+  function saveUsers(users) {
+    const normalized = normalizeUsers(users).slice(0, MAX_USERS);
+    compareState.set({
+      ...compareState.get(),
+      users: normalized,
+      input: "",
+      lastSaved: new Date().toISOString(),
+      status: "saved",
+      error: null,
+    });
+    $storage.set(STORAGE_KEY, normalized);
+  }
+
+  function loadUsers() {
+    const stored = $storage.get(STORAGE_KEY);
+    const users = normalizeUsers(stored).slice(0, MAX_USERS);
+    compareState.set({
+      ...compareState.get(),
+      users,
+      input: "",
+      status: "idle",
+      error: null,
+    });
+  }
+
+  webview.channel.on("addUsers", (payload) => {
+    const added = normalizeUsers(payload);
+    if (added.length === 0) {
+      compareState.set({ ...compareState.get(), status: "error", error: "Enter at least one username." });
+      return;
+    }
+    saveUsers([...compareState.get().users, ...added]);
+  });
+
+  webview.channel.on("removeUser", (index) => {
+    const users = [...compareState.get().users];
+    if (index >= 0 && index < users.length) {
+      users.splice(index, 1);
+      saveUsers(users);
+    }
+  });
+
+  compareState.watch((next) => {
+    renderWebviewContent(next);
+    webview.setContent(() => renderWebviewContent(next));
+  });
+
+  async function fetchAniListEntryForUser(userName, mediaId) {
+    const QUERY = `query ($userName: String!, $mediaId: Int!) { MediaList(userName: $userName, mediaId: $mediaId) { status progress score repeat media { episodes title { romaji english native } id idMal } user { name } } }`;
+    try {
+      const res = await ctx.fetch("https://graphql.anilist.co", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: QUERY, variables: { userName, mediaId } }),
+      });
+      const json = await res.json();
+      return json?.data?.MediaList || null;
+    } catch (error) {
+      console.warn("anilist-watch-status: fetchAniListEntryForUser error", error);
+      return null;
+    }
+  }
+
   async function updateStatus(event) {
     try {
       const currentEvent = event || ctx.screen.state().get();
-      console.log("anilist-watch-status:updateStatus event:", currentEvent);
-      
       const pathname = currentEvent?.pathname || "";
-      console.log("anilist-watch-status:pathname", pathname);
-      
       if (!pathname.startsWith("/entry") && pathname !== "/offline/entry/anime") {
         action.setLabel("AniList status");
         action.setTooltipText("Not on an anime page");
@@ -59,18 +198,13 @@ $ui.register((ctx) => {
       }
 
       const mediaId = getAnimeMediaId(currentEvent);
-      console.log("anilist-watch-status:mediaId", mediaId);
-      
       if (!mediaId) {
         action.setLabel("AniList status");
         action.setTooltipText("No anime selected");
         return;
       }
 
-      console.log("anilist-watch-status:calling getAnimeEntry with mediaId:", mediaId);
       const entry = await ctx.anime.getAnimeEntry(mediaId);
-      console.log("anilist-watch-status:entry", entry);
-
       if (!entry) {
         action.setLabel("AniList status");
         action.setTooltipText("Entry not found");
@@ -85,96 +219,59 @@ $ui.register((ctx) => {
 
       const anilistLabel = getStatusLabel(entry);
       const anilistTooltip = getTooltipText(entry);
-      // Multi-user compare: read additional usernames from storage
-      function normalizeUsers(val) {
-        if (!val) return [];
-        if (Array.isArray(val)) return val.map(String).filter(Boolean);
-        if (typeof val === "string") {
-          return val
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
-        }
-        return [];
-      }
+      const otherUsers = normalizeUsers($storage.get(STORAGE_KEY)).slice(0, MAX_USERS);
+      const compareParts = [];
 
-      async function fetchAniListEntryForUser(userName, mediaId) {
-        const QUERY = `query ($userName: String!, $mediaId: Int!) { MediaList(userName: $userName, mediaId: $mediaId) { status progress score repeat media { episodes title { romaji english native } id idMal } user { name } } }`;
-        try {
-          const res = await ctx.fetch("https://graphql.anilist.co", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: QUERY, variables: { userName, mediaId } }),
-          });
-          const json = await res.json();
-          if (json && json.data && json.data.MediaList) return json.data.MediaList;
-          return null;
-        } catch (err) {
-          console.warn("anilist-watch-status: fetchAniListEntryForUser error", err);
-          return null;
-        }
-      }
-
-      const stored = $storage.get("anilistCompare.users");
-      const otherUsers = normalizeUsers(stored).filter((u) => u && u !== "");
-      let compareParts = [];
       if (otherUsers.length > 0) {
-        // fetch all users concurrently (limit to reasonable number)
-        const limited = otherUsers.slice(0, 8);
         const results = await Promise.all(
-          limited.map((u) => fetchAniListEntryForUser(u, mediaId).then((r) => ({ user: u, entry: r })))
+          otherUsers.map(async (user) => {
+            const result = await fetchAniListEntryForUser(user, mediaId);
+            return { user, result };
+          })
         );
 
-        for (const r of results) {
-          if (!r.entry) {
-            compareParts.push(`${r.user}: Not Listed`);
+        for (const { user, result } of results) {
+          if (!result) {
+            compareParts.push(`${user}: Not Listed`);
             continue;
           }
-          const s = r.entry.status || "UNKNOWN";
-          const prog = r.entry.progress || 0;
-          const eps = r.entry.media?.episodes || null;
-          const title = r.entry.user?.name || r.user;
-          const part = eps ? `${title}: ${s} (${prog}/${eps})` : `${title}: ${s} (${prog})`;
-          compareParts.push(part);
+          const status = result.status || "UNKNOWN";
+          const progress = result.progress || 0;
+          const episodes = result.media?.episodes || null;
+          compareParts.push(
+            episodes
+              ? `${user}: ${status} (${progress}/${episodes})`
+              : `${user}: ${status} (${progress})`
+          );
         }
       }
-      let malInfo = null;
 
+      let malInfo = null;
       try {
         const malId = entry?.media?.idMal || mediaId;
-        console.log("anilist-watch-status:malId", malId);
         const malMetadata = await ctx.anime.getAnimeMetadata("mal", malId);
-        console.log("anilist-watch-status:malMetadata", malMetadata);
-        if (malMetadata?.titles) {
-          malInfo = Object.values(malMetadata.titles)[0] || `MAL #${malId}`;
-        } else {
-          malInfo = `MAL #${malId}`;
-        }
+        malInfo = malMetadata?.titles ? Object.values(malMetadata.titles)[0] || `MAL #${malId}` : `MAL #${malId}`;
       } catch (malError) {
         console.warn("anilist-watch-status:mal metadata failed", malError);
       }
 
-      const label = malInfo ? `${anilistLabel} / MAL` : anilistLabel;
       const compareSuffix = compareParts.length ? ` — ${compareParts.join(" • ")}` : "";
       const tooltip = malInfo
         ? `${anilistTooltip} — MAL: ${malInfo}${compareSuffix}`
         : `${anilistTooltip}${compareSuffix}`;
 
-      console.log("anilist-watch-status:final label", label);
-      console.log("anilist-watch-status:final tooltip", tooltip);
-      
-      action.setLabel(label);
+      action.setLabel(anilistLabel);
       action.setTooltipText(tooltip);
       action.setStyle({ background: "#7c3aed", color: "#ffffff" });
     } catch (error) {
-      console.error("anilist-watch-status:updateStatus error:", error);
-      console.error("anilist-watch-status:error stack:", error?.stack);
       action.setLabel("Error");
-      action.setTooltipText(`Error: ${error?.message || 'Unknown error'}`);
+      action.setTooltipText(`Error: ${error?.message || "Unknown error"}`);
       action.setStyle({ background: "#7c3aed", color: "#ffffff" });
+      console.error("anilist-watch-status:updateStatus error:", error);
     }
   }
 
   ctx.screen.onNavigate(updateStatus);
+  loadUsers();
   ctx.screen.loadCurrent();
 });

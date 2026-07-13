@@ -1,6 +1,8 @@
 $ui.register((ctx) => {
 
-const USERS = [
+const STORAGE_KEY = "anilistCompare.users";
+const MAX_USERS = 8;
+const DEFAULT_USERS = [
     "rriyaw",
     "Dara_",
     "PrincessAris"
@@ -34,6 +36,30 @@ function getMediaId(event) {
 
 function statusName(status) {
     return STATUS[status] || status || "Unknown";
+}
+
+function normalizeUsers(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map(String).map((v) => v.trim()).filter(Boolean);
+    if (typeof value === "string") {
+        return value
+            .split(/[\n,]/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
+    return [];
+}
+
+function loadUsers() {
+    const stored = $storage.get(STORAGE_KEY);
+    const users = normalizeUsers(stored);
+    return users.length > 0 ? users.slice(0, MAX_USERS) : DEFAULT_USERS;
+}
+
+function saveUsers(users) {
+    const normalized = normalizeUsers(users).slice(0, MAX_USERS);
+    $storage.set(STORAGE_KEY, normalized);
+    return normalized;
 }
 
 function statusEmoji(status) {
@@ -79,12 +105,58 @@ const action = ctx.action.newAnimePageButton({
 
 action.mount();
 
+const usersField = ctx.fieldRef(loadUsers().join(", "));
+const tray = ctx.newTray({
+    iconUrl: "https://anilist.co/img/icons/apple-touch-icon-256.png",
+    withContent: true,
+    width: "360px",
+    minHeight: "150px"
+});
+
+tray.render(() => {
+    const savedUsers = loadUsers();
+
+    tray.flex({ direction: "column", gap: "12px", style: "padding: 16px;" }, () => {
+        tray.text({ content: "AniList compare users", style: "font-weight: bold; font-size: 16px;" });
+        tray.input({
+            fieldRef: usersField,
+            placeholder: "Enter usernames separated by comma or newline",
+            style: "width: 100%;"
+        });
+        tray.flex({ gap: "8px" }, () => {
+            tray.button({
+                label: "Save",
+                onClick: () => {
+                    const value = usersField.current;
+                    const saved = saveUsers(value);
+                    usersField.setValue(saved.join(", "));
+                    if (ctx.screen.state().get()) {
+                        updateStatus(ctx.screen.state().get());
+                    }
+                    tray.close();
+                },
+                style: "flex: 1; background: #7c3aed; color: white;"
+            });
+            tray.button({
+                label: "Reset",
+                onClick: () => {
+                    const saved = saveUsers(DEFAULT_USERS);
+                    usersField.setValue(saved.join(", "));
+                    if (ctx.screen.state().get()) {
+                        updateStatus(ctx.screen.state().get());
+                    }
+                    tray.close();
+                },
+                style: "flex: 1;"
+            });
+        });
+        tray.text({ content: `Saved users: ${savedUsers.join(", ")}`, style: "font-size: 12px; opacity: 0.75;" });
+    });
+});
+
 action.onClick(() => {
-
-    action.setTooltipText("Refreshing...");
-
-    ctx.screen.loadCurrent();
-
+    usersField.setValue(loadUsers().join(", "));
+    tray.open();
 });
 
 function buildGraphQL(users){
@@ -140,8 +212,8 @@ ${body.join("\n")}
     };
 
 }
-async function queryAniList(mediaId) {
-    const payload = buildGraphQL(USERS);
+async function queryAniList(mediaId, users) {
+    const payload = buildGraphQL(users);
     payload.variables.mediaId = mediaId;
 
     const res = await ctx.fetch("https://graphql.anilist.co", {
@@ -163,11 +235,11 @@ async function queryAniList(mediaId) {
     return json.data || {};
 }
 
-function formatComparison(data) {
+function formatComparison(data, users) {
 
     const rows = [];
 
-    USERS.forEach((user, index) => {
+    users.forEach((user, index) => {
 
         const entry = data[`u${index}`];
 
@@ -320,14 +392,17 @@ async function updateStatus(event){
 
         }
 
+        const users = loadUsers();
         const compare =
             await queryAniList(
-                mediaId
+                mediaId,
+                users
             );
 
         const comparison =
             formatComparison(
-                compare
+                compare,
+                users
             );
 
         const malTitle =

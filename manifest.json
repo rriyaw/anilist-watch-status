@@ -1,0 +1,19 @@
+{
+  "id": "anilist-watch-status",
+  "name": "AniList Watch Status",
+  "version": "0.1.0",
+  "manifestURI": "local",
+  "language": "javascript",
+  "type": "plugin",
+  "description": "Shows AniList watch status on the anime page.",
+  "author": "rriyaw",
+  "lang": "en",
+  "payloadURI": "payload.js",
+  "isDevelopment": true,
+  "plugin": {
+    "version": "1",
+    "permissions": {
+      "scopes": ["anilist"]
+    }
+  }
+}

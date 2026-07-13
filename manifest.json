@@ -8,7 +8,7 @@
   "description": "Shows AniList watch status on the anime page.",
   "author": "rriyaw",
   "lang": "en",
-  "payloadURI": "payload.js",
+  "payloadURI": "https://raw.githubusercontent.com/rriyaw/anilist-watch-status/refs/heads/main/payload.js",
   "isDevelopment": true,
   "plugin": {
     "version": "1",

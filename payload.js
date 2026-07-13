@@ -141,17 +141,26 @@ ${body.join("\n")}
 
 }
 async function queryAniList(mediaId) {
-    const token = await $database.getAniListToken();
-
     const payload = buildGraphQL(USERS);
-
     payload.variables.mediaId = mediaId;
 
-    const result = await $anilist.customQuery(
-    payload,
-    token );
+    const res = await ctx.fetch("https://graphql.anilist.co", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
 
-    return result.data;
+    if (!res.ok) {
+        throw new Error(`AniList GraphQL request failed: ${res.status}`);
+    }
+
+    const json = await res.json();
+
+    if (json.errors?.length) {
+        throw new Error(json.errors.map((e) => e.message).join("; "));
+    }
+
+    return json.data || {};
 }
 
 function formatComparison(data) {

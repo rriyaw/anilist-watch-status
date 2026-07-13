@@ -1,7 +1,7 @@
 {
   "id": "anilist-watch-status",
   "name": "AniList Watch Status",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "manifestURI": "https://raw.githubusercontent.com/rriyaw/anilist-watch-status/refs/heads/main/manifest.json",
   "language": "javascript",
   "type": "plugin",

@@ -7,6 +7,7 @@ const DEFAULT_USERS = [
     "Dara_",
     "PrincessAris"
 ];
+const storage = typeof $storage !== "undefined" ? $storage : null;
 
 const STATUS = {
     CURRENT: "Watching",
@@ -51,14 +52,16 @@ function normalizeUsers(value) {
 }
 
 function loadUsers() {
-    const stored = $storage.get(STORAGE_KEY);
+    const stored = storage ? storage.get(STORAGE_KEY) : null;
     const users = normalizeUsers(stored);
     return users.length > 0 ? users.slice(0, MAX_USERS) : DEFAULT_USERS;
 }
 
 function saveUsers(users) {
     const normalized = normalizeUsers(users).slice(0, MAX_USERS);
-    $storage.set(STORAGE_KEY, normalized);
+    if (storage) {
+        storage.set(STORAGE_KEY, normalized);
+    }
     return normalized;
 }
 

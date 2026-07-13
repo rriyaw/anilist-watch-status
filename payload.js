@@ -119,12 +119,12 @@ const tray = ctx.newTray({
 tray.render(() => {
     const savedUsers = loadUsers();
 
-    tray.flex({ direction: "column", gap: "12px", style: "padding: 16px;" }, () => {
-        tray.text({ content: "AniList compare users", style: "font-weight: bold; font-size: 16px;" });
+    tray.flex({ direction: "column", gap: "12px", style: { padding: "16px" } }, () => {
+        tray.text({ content: "AniList compare users", style: { fontWeight: "bold", fontSize: "16px" } });
         tray.input({
             fieldRef: usersField,
             placeholder: "Enter usernames separated by comma or newline",
-            style: "width: 100%;"
+            style: { width: "100%" }
         });
         tray.flex({ gap: "8px" }, () => {
             tray.button({
@@ -138,7 +138,7 @@ tray.render(() => {
                     }
                     tray.close();
                 },
-                style: "flex: 1; background: #7c3aed; color: white;"
+                style: { flex: "1", background: "#7c3aed", color: "white" }
             });
             tray.button({
                 label: "Reset",
@@ -150,10 +150,10 @@ tray.render(() => {
                     }
                     tray.close();
                 },
-                style: "flex: 1;"
+                style: { flex: "1" }
             });
         });
-        tray.text({ content: `Saved users: ${savedUsers.join(", ")}`, style: "font-size: 12px; opacity: 0.75;" });
+        tray.text({ content: `Saved users: ${savedUsers.join(", ")}`, style: { fontSize: "12px", opacity: "0.75" } });
     });
 });
 

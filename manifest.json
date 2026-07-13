@@ -2,7 +2,7 @@
   "id": "anilist-watch-status",
   "name": "AniList Watch Status",
   "version": "0.1.0",
-  "manifestURI": "local",
+  "manifestURI": "https://raw.githubusercontent.com/rriyaw/anilist-watch-status/refs/heads/main/manifest.json",
   "language": "javascript",
   "type": "plugin",
   "description": "Shows AniList watch status on the anime page.",

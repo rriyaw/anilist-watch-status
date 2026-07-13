@@ -1,95 +1,59 @@
 $ui.register((ctx) => {
 
-const STORAGE_KEY = "anilistCompare.users";
-const MAX_USERS = 8;
-const DEFAULT_USERS = [
-    "rriyawai",
+const USERS = [
+    "rriyaw",
     "Dara_",
     "PrincessAris"
 ];
-const storage = typeof $storage !== "undefined" ? $storage : null;
 
-const STATUS = {
+const STATUS_LABELS = {
     CURRENT: "Watching",
+    PLANNING: "Plan to Watch",
     COMPLETED: "Completed",
-    PLANNING: "Planning",
-    PAUSED: "Paused",
     DROPPED: "Dropped",
+    PAUSED: "Paused",
     REPEATING: "Rewatching"
 };
 
-function getMediaId(event) {
-    const p = event?.searchParams || {};
+function getAnimeMediaId(event) {
+
+    const params = event?.searchParams || {};
 
     const raw =
-        p.id ??
-        p.mediaId ??
-        p.animeId ??
-        p.aid ??
-        p.anime;
+        params.id ??
+        params.mediaId ??
+        params.animeId ??
+        params.aid ??
+        params.anime;
 
     if (!raw) return null;
 
     const id = Number(raw);
 
-    return Number.isFinite(id) ? id : null;
+    return Number.isFinite(id) && id > 0
+        ? id
+        : null;
 }
 
-function statusName(status) {
-    return STATUS[status] || status || "Unknown";
+function getStatusLabel(status) {
+
+    return STATUS_LABELS[status] || status || "Unknown";
+
 }
 
-function normalizeUsers(value) {
-    if (!value) return [];
-    if (Array.isArray(value)) return value.map(String).map((v) => v.trim()).filter(Boolean);
-    if (typeof value === "string") {
-        return value
-            .split(/[\n,]/)
-            .map((item) => item.trim())
-            .filter(Boolean);
-    }
-    return [];
-}
+function getTooltipStatus(entry) {
 
-function loadUsers() {
-    const stored = storage ? storage.get(STORAGE_KEY) : null;
-    const users = normalizeUsers(stored);
-    return users.length > 0 ? users.slice(0, MAX_USERS) : DEFAULT_USERS;
-}
+    if (!entry)
+        return "Not Listed";
 
-function saveUsers(users) {
-    const normalized = normalizeUsers(users).slice(0, MAX_USERS);
-    if (storage) {
-        storage.set(STORAGE_KEY, normalized);
-    }
-    return normalized;
-}
+    const progress = entry.progress || 0;
 
-function statusEmoji(status) {
+    const total = entry.media?.episodes;
 
-    switch (status) {
+    if (total)
+        return `${getStatusLabel(entry.status)} (${progress}/${total})`;
 
-        case "CURRENT":
-            return "▶";
-
-        case "COMPLETED":
-            return "✓";
-
-        case "PLANNING":
-            return "📋";
-
-        case "PAUSED":
-            return "⏸";
-
-        case "DROPPED":
-            return "✕";
-
-        case "REPEATING":
-            return "↻";
-
-        default:
-            return "?";
-    }
+    return `${getStatusLabel(entry.status)} (${progress})`;
 
 }
 
@@ -108,175 +72,187 @@ const action = ctx.action.newAnimePageButton({
 
 action.mount();
 
-const usersField = ctx.fieldRef(loadUsers().join(", "));
-const tray = ctx.newTray({
-    iconUrl: "https://anilist.co/img/icons/apple-touch-icon-256.png",
-    withContent: true,
-    width: "360px",
-    minHeight: "150px"
-});
-
-tray.render(() => {
-    const savedUsers = loadUsers();
-
-    tray.flex({ direction: "column", gap: "12px", style: { padding: "16px" } }, () => {
-        tray.text({ content: "AniList compare users", style: { fontWeight: "bold", fontSize: "16px" } });
-        tray.input({
-            fieldRef: usersField,
-            placeholder: "Enter usernames separated by comma or newline",
-            style: { width: "100%" }
-        });
-        tray.flex({ gap: "8px" }, () => {
-            tray.button({
-                label: "Save",
-                onClick: () => {
-                    const value = usersField.current;
-                    const saved = saveUsers(value);
-                    usersField.setValue(saved.join(", "));
-                    if (ctx.screen.state().get()) {
-                        updateStatus(ctx.screen.state().get());
-                    }
-                    tray.close();
-                },
-                style: { flex: "1", background: "#7c3aed", color: "white" }
-            });
-            tray.button({
-                label: "Reset",
-                onClick: () => {
-                    const saved = saveUsers(DEFAULT_USERS);
-                    usersField.setValue(saved.join(", "));
-                    if (ctx.screen.state().get()) {
-                        updateStatus(ctx.screen.state().get());
-                    }
-                    tray.close();
-                },
-                style: { flex: "1" }
-            });
-        });
-        tray.text({ content: `Saved users: ${savedUsers.join(", ")}`, style: { fontSize: "12px", opacity: "0.75" } });
-    });
-});
-
 action.onClick(() => {
-    usersField.setValue(loadUsers().join(", "));
-    tray.open();
+
+    action.setTooltipText("Refreshing...");
+
+    ctx.screen.loadCurrent();
+
 });
 
-function buildGraphQL(users){
+function buildCompareQuery(users){
 
-    const vars = {
-        mediaId:0
-    };
-
-    const defs = [
-        "$mediaId:Int!"
-    ];
-
-    const body = [];
+    const defs = [];
+    const vars = {};
+    const queries = [];
 
     users.forEach((user,index)=>{
 
         const key = `u${index}`;
 
-        defs.push(`$${key}:String!`);
+        defs.push(`$${key}: String!`);
 
-        vars[key]=user;
+        vars[key] = user;
 
-        body.push(`
-${key}: MediaList(
-userName:$${key},
-mediaId:$mediaId
+        queries.push(`
+${key}: MediaListCollection(
+    userName: $${key}
+    type: ANIME
 ){
-status
-progress
-score
-repeat
+    lists{
+        entries{
 
-media{
-episodes
-}
+            status
+            progress
+            score
+            repeat
+
+            media{
+                id
+                episodes
+
+                title{
+                    userPreferred
+                }
+            }
+
+        }
+    }
 }
 `);
 
     });
 
-    return{
+    return {
 
-        query:`
-query Compare(${defs.join(",")}){
+        query: `
+query Compare(
+${defs.join(",\n")}
+){
 
-${body.join("\n")}
+${queries.join("\n")}
 
 }
 `,
 
-        variables:vars
+        variables: vars
 
     };
 
 }
-async function queryAniList(mediaId, users) {
-    const payload = buildGraphQL(users);
-    payload.variables.mediaId = mediaId;
+async function queryAniList() {
 
-    const res = await ctx.fetch("https://graphql.anilist.co", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-    });
+    const payload = buildCompareQuery(USERS);
 
-    if (!res.ok) {
-        throw new Error(`AniList GraphQL request failed: ${res.status}`);
-    }
+    const result = await $anilist.customQuery(
+        payload,
+        ""
+    );
 
-    const json = await res.json();
+    if (result.errors) {
 
-    if (json.errors?.length) {
-        throw new Error(json.errors.map((e) => e.message).join("; "));
-    }
-
-    return json.data || {};
-}
-
-function formatComparison(data, users) {
-
-    const rows = [];
-
-    users.forEach((user, index) => {
-
-        const entry = data[`u${index}`];
-
-        if (!entry) {
-            rows.push(`${user.padEnd(12)} Not Listed`);
-            return;
-        }
-
-        const status = statusName(entry.status);
-
-        const icon = statusEmoji(entry.status);
-
-        const progress = entry.progress || 0;
-
-        const total = entry.media?.episodes;
-
-        const progressText =
-            total && total > 0
-                ? `${progress}/${total}`
-                : `${progress}`;
-
-        rows.push(
-            `${icon} ${user.padEnd(12)} ${status.padEnd(12)} ${progressText}`
+        throw new Error(
+            result.errors[0]?.message || "AniList GraphQL Error"
         );
 
-    });
+    }
 
-    return rows.join("\n");
+    return result.data;
 
 }
 
-async function getCurrentUserEntry(mediaId){
+function findEntry(collection, mediaId) {
 
-    const entry = await ctx.anime.getAnimeEntry(mediaId);
+    if (!collection)
+        return null;
+
+    const lists = collection.lists || [];
+
+    for (const list of lists) {
+
+        const entries = list.entries || [];
+
+        for (const entry of entries) {
+
+            if (entry.media?.id === mediaId) {
+
+                return entry;
+
+            }
+
+        }
+
+    }
+
+    return null;
+
+}
+
+function formatComparison(compareData, mediaId) {
+
+    const lines = [];
+
+    for (let i = 0; i < USERS.length; i++) {
+
+        const collection = compareData[`u${i}`];
+
+        const entry = findEntry(
+            collection,
+            mediaId
+        );
+
+        if (!entry) {
+
+            lines.push(
+                `${USERS[i]} : Not Listed`
+            );
+
+            continue;
+
+        }
+
+        const progress =
+            entry.media?.episodes
+            ? `${entry.progress}/${entry.media.episodes}`
+            : `${entry.progress}`;
+
+        let line =
+`${USERS[i]}
+${getStatusLabel(entry.status)}
+${progress}`;
+
+        if (
+            entry.score &&
+            Number(entry.score) > 0
+        ) {
+
+            line += ` | ★ ${entry.score}`;
+
+        }
+
+        if (
+            entry.repeat &&
+            entry.repeat > 0
+        ) {
+
+            line += ` | 🔁 ${entry.repeat}`;
+
+        }
+
+        lines.push(line);
+
+    }
+
+    return lines.join("\n");
+
+}
+
+async function getCurrentEntry(mediaId){
+
+    const entry =
+        await ctx.anime.getAnimeEntry(
+            mediaId
+        );
 
     if(!entry)
         return null;
@@ -284,33 +260,19 @@ async function getCurrentUserEntry(mediaId){
     if(!entry.listData)
         return null;
 
-    return {
-
-        status:
-            entry.listData.status,
-
-        progress:
-            entry.listData.progress || 0,
-
-        episodes:
-            entry.media?.episodes ||
-
-            entry.media?.episodeCount ||
-
-            null,
-
-        malId:
-            entry.media?.idMal ||
-
-            mediaId
-
-    };
+    return entry;
 
 }
 
-async function getMalTitle(malId){
+async function getMalTitle(entry){
 
     try{
+
+        const malId =
+            entry.media?.idMal;
+
+        if(!malId)
+            return null;
 
         const metadata =
             await ctx.anime.getAnimeMetadata(
@@ -326,7 +288,8 @@ async function getMalTitle(malId){
 
         }
 
-    }catch(e){
+    }
+    catch(e){
 
         console.warn(e);
 
@@ -335,9 +298,9 @@ async function getMalTitle(malId){
     return null;
 
 }
-async function updateStatus(event){
+async function updateStatus(event) {
 
-    try{
+    try {
 
         const current =
             event ||
@@ -346,96 +309,85 @@ async function updateStatus(event){
         const pathname =
             current?.pathname || "";
 
-        if(
+        if (
             !pathname.startsWith("/entry") &&
             pathname !== "/offline/entry/anime"
-        ){
+        ) {
 
             action.setLabel("AniList");
-
-            action.setTooltipText(
-                "Not on an anime page"
-            );
-
+            action.setTooltipText("Not on an anime page");
             return;
 
         }
 
         const mediaId =
-            getMediaId(current);
+            getAnimeMediaId(current);
 
-        if(!mediaId){
+        if (!mediaId) {
 
             action.setLabel("AniList");
+            action.setTooltipText("No anime selected");
+            return;
 
+        }
+
+        action.setLabel("Loading...");
+        action.setTooltipText("Comparing users...");
+
+        // Logged in user's entry
+        const myEntry =
+            await getCurrentEntry(mediaId);
+
+        if (!myEntry) {
+
+            action.setLabel("Not Tracked");
             action.setTooltipText(
-                "No anime selected"
+                "Anime is not in your AniList."
             );
 
             return;
 
         }
 
-        const me =
-            await getCurrentUserEntry(
-                mediaId
-            );
-
-        if(!me){
-
-            action.setLabel(
-                "Not Tracked"
-            );
-
-            action.setTooltipText(
-                "Anime isn't in your AniList."
-            );
-
-            return;
-
-        }
-
-        const users = loadUsers();
-        const compare =
-            await queryAniList(
-                mediaId,
-                users
-            );
+        // Fetch every compare user in ONE GraphQL request
+        const compareData =
+            await queryAniList();
 
         const comparison =
             formatComparison(
-                compare,
-                users
-            );
-
-        const malTitle =
-            await getMalTitle(
-                me.malId
+                compareData,
+                mediaId
             );
 
         const progress =
-            me.episodes
-            ? `${me.progress}/${me.episodes}`
-            : `${me.progress}`;
+            myEntry.media?.episodes
+                ? `${myEntry.listData.progress}/${myEntry.media.episodes}`
+                : `${myEntry.listData.progress}`;
+
+        const malTitle =
+            await getMalTitle(myEntry);
 
         let tooltip =
-`${statusName(me.status)}
-Progress: ${progress}`;
+`${getStatusLabel(myEntry.listData.status)}
+Progress : ${progress}`;
 
-        if(malTitle){
+        if (malTitle) {
 
             tooltip +=
-`\nMAL: ${malTitle}`;
+`\nMAL : ${malTitle}`;
 
         }
 
         tooltip +=
-`\n\nCompare
-────────────────
+`\n\n━━━━━━━━━━━━━━━━━━
+Compare
+━━━━━━━━━━━━━━━━━━
 ${comparison}`;
 
         action.setLabel(
-            statusName(me.status)
+            getStatusLabel(
+                myEntry.listData.status
+            )
         );
 
         action.setTooltipText(
@@ -444,41 +396,36 @@ ${comparison}`;
 
         action.setStyle({
 
-            background:"#7c3aed",
-
-            color:"#ffffff"
+            background: "#7c3aed",
+            color: "#ffffff"
 
         });
 
     }
-    catch(err){
+    catch (err) {
 
         console.error(err);
 
-        action.setLabel(
-            "Error"
-        );
+        action.setLabel("Error");
 
         action.setTooltipText(
-            err.message ||
+
+            err?.message ||
             "Unknown Error"
+
         );
 
         action.setStyle({
 
-            background:"#dc2626",
-
-            color:"#ffffff"
+            background: "#dc2626",
+            color: "#ffffff"
 
         });
 
     }
 
 }
-
-ctx.screen.onNavigate(
-    updateStatus
-);
+ctx.screen.onNavigate(updateStatus);
 
 ctx.screen.loadCurrent();
 

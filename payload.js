@@ -144,23 +144,13 @@ async function queryAniList() {
 
     const payload = buildCompareQuery(USERS);
 
-    const result = await $anilist.customQuery(
-        payload,
-        ""
-    );
+    const result = await $anilist.customQuery(payload, "");
 
-    if (result.errors) {
+    console.log("FULL RESULT");
+    console.log(result);
 
-        throw new Error(
-            result.errors[0]?.message || "AniList GraphQL Error"
-        );
-
-    }
-
-    return result.data;
-
+    return result;
 }
-
 function findEntry(collection, mediaId) {
 
     if (!collection)
@@ -352,7 +342,7 @@ async function updateStatus(event) {
         // Fetch every compare user in ONE GraphQL request
         const compareData =
             await queryAniList();
-
+        console.log(compareData);
         const comparison =
             formatComparison(
                 compareData,

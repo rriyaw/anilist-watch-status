@@ -3,7 +3,7 @@ $ui.register((ctx) => {
 const STORAGE_KEY = "anilistCompare.users";
 const MAX_USERS = 8;
 const DEFAULT_USERS = [
-    "rriyaw",
+    "rriyawai",
     "Dara_",
     "PrincessAris"
 ];

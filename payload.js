@@ -1,8 +1,8 @@
 $ui.register((ctx) => {
 
 const USERS = [
-    "rriyaw",
-    "Dara_",
+    "rriyawai",
+    "Dharion",
     "PrincessAris"
 ];
 

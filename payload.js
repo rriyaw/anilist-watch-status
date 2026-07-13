@@ -135,6 +135,7 @@ $ui.register((ctx) => {
       error: null,
     });
     $storage.set(STORAGE_KEY, normalized);
+    webview.setContent(() => renderWebviewContent(compareState.get()));
   }
 
   function loadUsers() {
@@ -147,6 +148,7 @@ $ui.register((ctx) => {
       status: "idle",
       error: null,
     });
+    webview.setContent(() => renderWebviewContent(compareState.get()));
   }
 
   webview.channel.on("addUsers", (payload) => {
@@ -166,10 +168,9 @@ $ui.register((ctx) => {
     }
   });
 
-  compareState.watch((next) => {
-    renderWebviewContent(next);
-    webview.setContent(() => renderWebviewContent(next));
-  });
+  function renderState(state) {
+    webview.setContent(() => renderWebviewContent(state));
+  }
 
   async function fetchAniListEntryForUser(userName, mediaId) {
     const QUERY = `query ($userName: String!, $mediaId: Int!) { MediaList(userName: $userName, mediaId: $mediaId) { status progress score repeat media { episodes title { romaji english native } id idMal } user { name } } }`;

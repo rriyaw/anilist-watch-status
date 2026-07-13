@@ -9,7 +9,7 @@
   "author": "rriyaw",
   "lang": "en",
   "payloadURI": "https://raw.githubusercontent.com/rriyaw/anilist-watch-status/refs/heads/main/payload.js",
-  "isDevelopment": true,
+  "isDevelopment": false,
   "plugin": {
     "version": "1",
     "permissions": {
